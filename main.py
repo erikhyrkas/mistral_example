@@ -44,9 +44,6 @@ def main():
                                                  quantization_config=bnb_config,
                                                  attn_implementation="flash_attention_2")
 
-    text = "<s> [INST] Tell me a story about a man from Minnesota. [/INST] "
-    inputs = tokenizer(text, return_tensors="pt").to("cuda")
-
     generation_config = GenerationConfig.from_model_config(model.config)
     generation_config.max_new_tokens = 2000
     generation_config.min_length = 1
@@ -60,8 +57,19 @@ def main():
     # generation_config.early_stopping = True
     generation_config.eos_token_id = tokenizer.eos_token_id
     generation_config.pad_token_id = generation_config.eos_token_id
-    outputs = model.generate(**inputs,  generation_config=generation_config)
-    print(tokenizer.decode(outputs[0], skip_special_tokens=True))
+    while True:
+        next_input = input("> ")
+        if next_input == 'exit':
+            break
+        text = f"<s> [INST] {next_input} [/INST] "
+        inputs = tokenizer(text, return_tensors="pt").to("cuda")
+        outputs = model.generate(**inputs,  generation_config=generation_config)
+        result_text = tokenizer.decode(outputs[0], skip_special_tokens=True, skip_prompt=True)
+        if "[/INST]" in result_text:
+            # Sometimes the prompt leaks in. It shouldn't.
+            result_text = result_text[result_text.find("[/INST]") + len("[/INST]"):]
+        result_text = result_text.strip()
+        print(result_text)
 
 
 if __name__ == '__main__':
