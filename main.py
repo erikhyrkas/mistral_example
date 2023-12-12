@@ -1,5 +1,6 @@
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, GenerationConfig
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, GenerationConfig, TextStreamer
+
 
 # Requirements:
 # * Linux/MacOs (The bitsandbytes library doesn't work on Windows. I used WSL.)
@@ -28,6 +29,12 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 # pip install scipy
 
 
+class TextStreamerWithoutSeparator(TextStreamer):
+    def on_finalized_text(self, text: str, stream_end: bool = False):
+        clean_text = text.replace("</s>", "")
+        print(clean_text, flush=True, end="" if not stream_end else None)
+
+
 def main():
     model_id = "mistralai/Mixtral-8x7B-Instruct-v0.1"
     tokenizer = AutoTokenizer.from_pretrained(model_id)
@@ -48,28 +55,19 @@ def main():
     generation_config.max_new_tokens = 2000
     generation_config.min_length = 1
     generation_config.do_sample = True
-    # generation_config.repetition_penalty = 1.4
     generation_config.temperature = 1.0
     generation_config.top_p = 0.6
-    # generation_config.top_k = 50
-    # generation_config.num_return_sequences = 1
-    # generation_config.num_beams = 2
-    # generation_config.early_stopping = True
     generation_config.eos_token_id = tokenizer.eos_token_id
     generation_config.pad_token_id = generation_config.eos_token_id
+    streamer = TextStreamerWithoutSeparator(tokenizer, skip_prompt=True)
     while True:
         next_input = input("> ")
         if next_input == 'exit':
             break
+        print()
         text = f"<s> [INST] {next_input} [/INST] "
         inputs = tokenizer(text, return_tensors="pt").to("cuda")
-        outputs = model.generate(**inputs,  generation_config=generation_config)
-        result_text = tokenizer.decode(outputs[0], skip_special_tokens=True, skip_prompt=True)
-        if "[/INST]" in result_text:
-            # Sometimes the prompt leaks in. It shouldn't.
-            result_text = result_text[result_text.find("[/INST]") + len("[/INST]"):]
-        result_text = result_text.strip()
-        print(result_text)
+        model.generate(**inputs, streamer=streamer, generation_config=generation_config)
 
 
 if __name__ == '__main__':
